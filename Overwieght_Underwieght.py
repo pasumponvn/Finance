@@ -46,7 +46,8 @@ def dcm_fair_price(prices, risk_free_rate=0.065, risk_premium=0.07):
     return fair_price, expected_return, discount_rate
 
 def get_nse_symbol(symbol):
-    return symbol.strip().upper() + '.NS'
+    #return symbol.strip().upper() + '.NS'
+    return symbol.strip().upper().replace("-", "_") + ".NS"
 
 if submit and stock:
     try:
