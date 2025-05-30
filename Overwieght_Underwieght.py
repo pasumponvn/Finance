@@ -8,7 +8,7 @@ import plotly.express as px # Import plotly for interactive plots
 # Set page configuration for better aesthetics
 st.set_page_config(
     page_title="NSE Stock Valuation (DDM)",
-    page_icon="📈",
+    page_icon="�",
     layout="centered",
     initial_sidebar_state="auto"
 )
@@ -37,50 +37,62 @@ def calculate_gordon_growth_ddm(d0, r, g):
     intrinsic_value = d1 / (r - g)
     return intrinsic_value, None
 
-def get_stock_data(ticker_symbol):
+def get_stock_data(ticker_symbol, benchmark_ticker="^NSEI"): # Added benchmark_ticker
     """
-    Fetches current price, historical dividend data, and historical price data for a given ticker.
+    Fetches current price, historical dividend data, and historical price data for a given ticker,
+    and also fetches historical data for a benchmark ticker.
 
     Args:
         ticker_symbol (str): The stock ticker symbol (e.g., "RELIANCE.NS").
+        benchmark_ticker (str): The benchmark ticker symbol (default: "^NSEI" for NIFTY 50).
 
     Returns:
-        tuple: (current_price, latest_annual_dividend, historical_prices_df, error_message)
+        tuple: (current_price, latest_annual_dividend, historical_prices_df, benchmark_prices_df, error_message)
                latest_annual_dividend is sum of dividends over last 12 months.
                historical_prices_df is a pandas DataFrame with 'Date' and 'Close' columns.
+               benchmark_prices_df is a pandas DataFrame with 'Date' and 'Close' columns for the benchmark.
     """
     try:
         stock = yf.Ticker(ticker_symbol)
 
-        # Fetch historical data for charting (e.g., last 1 year)
-        hist_data = stock.history(period="1y")
+        # Fetch historical data for charting (last 2 years)
+        hist_data = stock.history(period="2y")
         if hist_data.empty:
-            return None, None, None, "No historical data found for this stock. Check ticker symbol."
+            return None, None, None, None, "No historical data found for this stock. Check ticker symbol."
 
         current_price = hist_data['Close'].iloc[-1]
         historical_prices_df = hist_data[['Close']].reset_index()
         historical_prices_df.columns = ['Date', 'Close'] # Rename columns for clarity
 
+        # Fetch benchmark data
+        benchmark = yf.Ticker(benchmark_ticker)
+        benchmark_hist_data = benchmark.history(period="2y")
+        if benchmark_hist_data.empty:
+            return None, None, None, None, f"No historical data found for benchmark {benchmark_ticker}. Check ticker symbol."
+
+        benchmark_prices_df = benchmark_hist_data[['Close']].reset_index()
+        benchmark_prices_df.columns = ['Date', 'Close']
+
         # Get historical dividends for the last 12 months
         dividends = stock.dividends
         if dividends.empty:
-            return current_price, 0, historical_prices_df, "No historical dividend data found for this stock."
+            return current_price, 0, historical_prices_df, benchmark_prices_df, "No historical dividend data found for this stock."
 
         # Sum dividends for the last 12 months (approx. annual dividend)
         latest_dividend_date = dividends.index.max()
         if pd.isna(latest_dividend_date):
-            return current_price, 0, historical_prices_df, "Could not determine latest dividend date."
+            return current_price, 0, historical_prices_df, benchmark_prices_df, "Could not determine latest dividend date."
 
         one_year_ago = latest_dividend_date - pd.Timedelta(days=365)
         recent_dividends = dividends[dividends.index >= one_year_ago]
         latest_annual_dividend = recent_dividends.sum()
 
         if latest_annual_dividend == 0:
-            return current_price, 0, historical_prices_df, "No dividends paid in the last 12 months."
+            return current_price, 0, historical_prices_df, benchmark_prices_df, "No dividends paid in the last 12 months."
 
-        return current_price, latest_annual_dividend, historical_prices_df, None
+        return current_price, latest_annual_dividend, historical_prices_df, benchmark_prices_df, None
     except Exception as e:
-        return None, None, None, f"Could not fetch data for {ticker_symbol}. Error: {e}"
+        return None, None, None, None, f"Could not fetch data for {ticker_symbol} or {benchmark_ticker}. Error: {e}"
 
 # --- Streamlit UI ---
 
@@ -90,7 +102,7 @@ This application helps you estimate the intrinsic value of an NSE stock using th
 Compare the intrinsic value with the current market price to determine if a stock is "overweight" (undervalued) or "underweight" (overvalued).
 """)
 
-st.info("💡 **Note:** For NSE stocks, remember to add `.NS` to the ticker symbol (e.g., `RELIANCE.NS`, `TCS.NS`).")
+st.info("💡 **Note:** For NSE stocks, remember to add `.NS` to the ticker symbol (e.g., `RELIANCE.NS`, `TCS.NS`). The benchmark used is NIFTY 50 (`^NSEI`).")
 
 # Input fields
 ticker_input = st.text_input("Enter NSE Stock Ticker (e.g., RELIANCE.NS)", "RELIANCE.NS").strip().upper()
@@ -142,22 +154,49 @@ if st.button("Analyze Stock"):
     if not ticker_input:
         st.error("Please enter a stock ticker symbol.")
     else:
-        with st.spinner(f"Fetching data for {ticker_input}..."):
-            current_price, d0, historical_prices_df, fetch_error = get_stock_data(ticker_input)
+        with st.spinner(f"Fetching data for {ticker_input} and benchmark..."):
+            current_price, d0, historical_prices_df, benchmark_prices_df, fetch_error = get_stock_data(ticker_input)
 
         if fetch_error:
             st.error(fetch_error)
-        elif current_price is None or d0 is None or historical_prices_df is None:
-            st.error("Failed to retrieve essential stock data. Please check the ticker symbol.")
+        elif current_price is None or d0 is None or historical_prices_df is None or benchmark_prices_df is None:
+            st.error("Failed to retrieve essential stock data. Please check the ticker symbol and internet connection.")
         else:
             st.subheader(f"Analysis for {ticker_input}")
 
-            # Display the price chart
+            # Display the price chart with benchmark comparison
             st.markdown("---")
-            st.subheader("Stock Price History (Last 1 Year)")
-            fig = px.line(historical_prices_df, x='Date', y='Close', title=f'{ticker_input} Closing Price')
+            st.subheader("Stock Price Performance vs. NIFTY 50 (Last 2 Years)")
+
+            # Normalize prices to their starting point for percentage comparison
+            initial_stock_price = historical_prices_df['Close'].iloc[0]
+            initial_benchmark_price = benchmark_prices_df['Close'].iloc[0]
+
+            historical_prices_df['Normalized Close'] = (historical_prices_df['Close'] / initial_stock_price - 1) * 100
+            benchmark_prices_df['Normalized Close'] = (benchmark_prices_df['Close'] / initial_benchmark_price - 1) * 100
+
+            # Merge dataframes for plotting
+            merged_df = pd.merge(historical_prices_df[['Date', 'Normalized Close']],
+                                 benchmark_prices_df[['Date', 'Normalized Close']],
+                                 on='Date',
+                                 suffixes=(f'_{ticker_input}', '_Benchmark'))
+
+            # Melt the dataframe for Plotly Express
+            plot_df = merged_df.melt(id_vars=['Date'],
+                                     value_vars=[f'Normalized Close_{ticker_input}', 'Normalized Close_Benchmark'],
+                                     var_name='Asset',
+                                     value_name='Percentage Change')
+
+            # Rename assets for legend
+            plot_df['Asset'] = plot_df['Asset'].replace({
+                f'Normalized Close_{ticker_input}': ticker_input,
+                'Normalized Close_Benchmark': 'NIFTY 50'
+            })
+
+            fig = px.line(plot_df, x='Date', y='Percentage Change', color='Asset',
+                          title=f'{ticker_input} vs. NIFTY 50 Performance (Percentage Change)')
             fig.update_xaxes(title_text="Date")
-            fig.update_yaxes(title_text="Price (₹)")
+            fig.update_yaxes(title_text="Percentage Change (%)")
             st.plotly_chart(fig, use_container_width=True)
 
 
@@ -198,3 +237,4 @@ if st.button("Analyze Stock"):
                     </small>
                     """, unsafe_allow_html=True)
 
+�
