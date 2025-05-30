@@ -1,80 +1,200 @@
 import streamlit as st
 import yfinance as yf
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+import numpy as np
+import plotly.express as px # Import plotly for interactive plots
 
-st.set_page_config(page_title='NSE Nifty 50 Overweight/Underweight Prediction (DCM Model)', layout='centered')
-st.title('NSE Nifty 50 Overweight/Underweight Prediction (DCM Model)')
+# --- Configuration ---
+# Set page configuration for better aesthetics
+st.set_page_config(
+    page_title="NSE Stock Valuation (DDM)",
+    page_icon="📈",
+    layout="centered",
+    initial_sidebar_state="auto"
+)
 
-st.write("""
-Select one Nifty 50 stock below to predict if it is **Overweight** or **Underweight** based on a Discounted Cashflow Model (DCM) approximation using last 1 year of daily price data.
+# --- Helper Functions ---
+
+def calculate_gordon_growth_ddm(d0, r, g):
+    """
+    Calculates the intrinsic value of a stock using the Gordon Growth Model.
+
+    Args:
+        d0 (float): Last paid annual dividend per share.
+        r (float): Required rate of return (cost of equity) as a decimal.
+        g (float): Constant growth rate of dividends as a decimal.
+
+    Returns:
+        float: Intrinsic value of the stock.
+        str: Error message if calculation is not possible, otherwise None.
+    """
+    if r <= g:
+        return None, "Error: Required rate of return (r) must be greater than dividend growth rate (g)."
+    if d0 <= 0:
+        return None, "Error: Last paid dividend (D0) must be positive for DDM."
+
+    d1 = d0 * (1 + g) # Expected dividend next year
+    intrinsic_value = d1 / (r - g)
+    return intrinsic_value, None
+
+def get_stock_data(ticker_symbol):
+    """
+    Fetches current price, historical dividend data, and historical price data for a given ticker.
+
+    Args:
+        ticker_symbol (str): The stock ticker symbol (e.g., "RELIANCE.NS").
+
+    Returns:
+        tuple: (current_price, latest_annual_dividend, historical_prices_df, error_message)
+               latest_annual_dividend is sum of dividends over last 12 months.
+               historical_prices_df is a pandas DataFrame with 'Date' and 'Close' columns.
+    """
+    try:
+        stock = yf.Ticker(ticker_symbol)
+
+        # Fetch historical data for charting (e.g., last 1 year)
+        hist_data = stock.history(period="1y")
+        if hist_data.empty:
+            return None, None, None, "No historical data found for this stock. Check ticker symbol."
+
+        current_price = hist_data['Close'].iloc[-1]
+        historical_prices_df = hist_data[['Close']].reset_index()
+        historical_prices_df.columns = ['Date', 'Close'] # Rename columns for clarity
+
+        # Get historical dividends for the last 12 months
+        dividends = stock.dividends
+        if dividends.empty:
+            return current_price, 0, historical_prices_df, "No historical dividend data found for this stock."
+
+        # Sum dividends for the last 12 months (approx. annual dividend)
+        latest_dividend_date = dividends.index.max()
+        if pd.isna(latest_dividend_date):
+            return current_price, 0, historical_prices_df, "Could not determine latest dividend date."
+
+        one_year_ago = latest_dividend_date - pd.Timedelta(days=365)
+        recent_dividends = dividends[dividends.index >= one_year_ago]
+        latest_annual_dividend = recent_dividends.sum()
+
+        if latest_annual_dividend == 0:
+            return current_price, 0, historical_prices_df, "No dividends paid in the last 12 months."
+
+        return current_price, latest_annual_dividend, historical_prices_df, None
+    except Exception as e:
+        return None, None, None, f"Could not fetch data for {ticker_symbol}. Error: {e}"
+
+# --- Streamlit UI ---
+
+st.title("📈 NSE Stock Valuation using DDM")
+st.markdown("""
+This application helps you estimate the intrinsic value of an NSE stock using the Gordon Growth Dividend Discount Model (DDM).
+Compare the intrinsic value with the current market price to determine if a stock is "overweight" (undervalued) or "underweight" (overvalued).
 """)
 
-# Full list of Nifty 50 stocks as of May 2024
-nifty50_stocks = [
-    'ADANIPORTS', 'ASIANPAINT', 'AXISBANK', 'BAJAJ-AUTO', 'BAJFINANCE',
-    'BAJAJFINSV', 'BPCL', 'BHARTIARTL', 'BRITANNIA', 'CIPLA',
-    'COALINDIA', 'DIVISLAB', 'DRREDDY', 'EICHERMOT', 'GRASIM',
-    'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HEROMOTOCO', 'HINDALCO',
-    'HINDUNILVR', 'ICICIBANK', 'ITC', 'INDUSINDBK', 'INFY',
-    'JSWSTEEL', 'KOTAKBANK', 'LT', 'LTIM', 'M&M',
-    'MARUTI', 'NESTLEIND', 'NTPC', 'ONGC', 'POWERGRID',
-    'RELIANCE', 'SBILIFE', 'SBIN', 'SHRIRAMFIN', 'SUNPHARMA',
-    'TATACONSUM', 'TATAMOTORS', 'TATASTEEL', 'TCS', 'TECHM',
-    'TITAN', 'ULTRACEMCO', 'UPL', 'WIPRO', 'HDFCAMC'
-]
+st.info("💡 **Note:** For NSE stocks, remember to add `.NS` to the ticker symbol (e.g., `RELIANCE.NS`, `TCS.NS`).")
 
-stock = st.selectbox(
-    'Select a Nifty 50 stock to analyze:',
-    options=nifty50_stocks,
-    index=nifty50_stocks.index('RELIANCE')
-)
-submit = st.button('Submit')
+# Input fields
+ticker_input = st.text_input("Enter NSE Stock Ticker (e.g., RELIANCE.NS)", "RELIANCE.NS").strip().upper()
 
-def dcm_fair_price(prices, risk_free_rate=0.065, risk_premium=0.07):
-    n = len(prices)
-    if n < 2:
-        return np.nan, np.nan, np.nan
-    start_price = prices[0]
-    end_price = prices[-1]
-    cagr = (end_price/start_price)**(1/(n/252)) - 1
-    expected_return = cagr if not np.isnan(cagr) else 0.10
-    discount_rate = risk_free_rate + risk_premium
-    fair_price = end_price / (1 + discount_rate)
-    return fair_price, expected_return, discount_rate
+st.subheader("DDM Parameters")
 
-def get_nse_symbol(symbol):
-    #return symbol.strip().upper() + '.NS'
-    return symbol.strip().upper().replace("-", "_") + ".NS"
+# Required Rate of Return (r)
+st.markdown("### Required Rate of Return (r)")
+st.markdown("""
+This represents the minimum rate of return an investor expects from an investment.
+It is often estimated using the Capital Asset Pricing Model (CAPM):
+$r = R_f + \\beta \\times (R_m - R_f)$
+Where:
+- $R_f$: Risk-free rate (e.g., yield on a 10-year Indian Government Bond).
+- $\\beta$: Beta of the stock (measures volatility relative to the market).
+- $R_m - R_f$: Market risk premium (expected market return minus risk-free rate).
+""")
 
-if submit and stock:
-    try:
-        end_date = datetime.today()
-        start_date = end_date - timedelta(days=365)
-        yf_symbol = get_nse_symbol(stock)
-        data = yf.download(yf_symbol, start=start_date, end=end_date, progress=False)
-        if data.empty or 'Close' not in data:
-            st.error('No data found for this stock.')
+# Example values for India:
+# Risk-free rate (Rf): ~7.2% (as of late 2024/early 2025 for 10-year G-Sec)
+# Market Risk Premium (Rm - Rf): ~6-8% (historical average for India)
+# Beta: Varies by stock (can be found on financial websites)
+
+col1, col2 = st.columns(2)
+with col1:
+    risk_free_rate = st.number_input("Risk-Free Rate ($R_f$, e.g., 0.072 for 7.2%)", min_value=0.0, max_value=1.0, value=0.072, step=0.001, format="%.3f")
+with col2:
+    market_risk_premium = st.number_input("Market Risk Premium ($R_m - R_f$, e.g., 0.07 for 7%)", min_value=0.0, max_value=1.0, value=0.07, step=0.001, format="%.3f")
+
+beta_input = st.number_input("Stock Beta ($\beta$, e.g., 1.0)", min_value=0.0, value=1.0, step=0.01, format="%.2f")
+
+# Calculate 'r' using CAPM
+required_rate_of_return = risk_free_rate + beta_input * market_risk_premium
+st.write(f"Calculated Required Rate of Return ($r$): **{required_rate_of_return:.2%}**")
+
+st.markdown("### Dividend Growth Rate (g)")
+st.markdown("""
+This is the expected constant annual growth rate of the company's dividends.
+It can be estimated from historical dividend growth, analyst forecasts, or using the formula:
+$g = ROE \\times (1 - Payout Ratio)$
+Where:
+- $ROE$: Return on Equity
+- Payout Ratio: Dividends / Net Income
+""")
+dividend_growth_rate = st.number_input("Dividend Growth Rate ($g$, e.g., 0.05 for 5%)", min_value=0.0, max_value=required_rate_of_return - 0.001, value=0.05, step=0.001, format="%.3f", help="Must be less than Required Rate of Return (r)")
+
+
+if st.button("Analyze Stock"):
+    if not ticker_input:
+        st.error("Please enter a stock ticker symbol.")
+    else:
+        with st.spinner(f"Fetching data for {ticker_input}..."):
+            current_price, d0, historical_prices_df, fetch_error = get_stock_data(ticker_input)
+
+        if fetch_error:
+            st.error(fetch_error)
+        elif current_price is None or d0 is None or historical_prices_df is None:
+            st.error("Failed to retrieve essential stock data. Please check the ticker symbol.")
         else:
-            prices = data['Close'].dropna().values
-            fair_price, cagr, discount_rate = dcm_fair_price(prices)
-            current_price = prices[-1]
-            status = "Overweight 🚀" if current_price > fair_price else "Underweight ⚠️"
-            st.subheader(f"{stock} Prediction: **{status}**")
-            st.write(f"**Current Price:** ₹{current_price:.2f}")
-            st.write(f"**DCM Fair Price (approx):** ₹{fair_price:.2f}")
-            st.write(f"**1Y CAGR:** {cagr*100:.2f}% | **Discount Rate:** {discount_rate*100:.2f}%")
+            st.subheader(f"Analysis for {ticker_input}")
 
-            # Plot
-            fig, ax = plt.subplots(figsize=(9, 4))
-            data['Close'].plot(ax=ax, label='Historical Close Price')
-            ax.axhline(fair_price, color='green', linestyle='--', label='DCM Fair Price')
-            ax.axhline(current_price, color='blue', linestyle=':', label='Current Price')
-            ax.set_title(f"{stock} (NSE) Price vs DCM Fair Value")
-            ax.set_ylabel("Price (INR)")
-            ax.legend()
-            st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Error fetching data or calculation: {e}")
+            # Display the price chart
+            st.markdown("---")
+            st.subheader("Stock Price History (Last 1 Year)")
+            fig = px.line(historical_prices_df, x='Date', y='Close', title=f'{ticker_input} Closing Price')
+            fig.update_xaxes(title_text="Date")
+            fig.update_yaxes(title_text="Price (₹)")
+            st.plotly_chart(fig, use_container_width=True)
+
+
+            st.markdown("---")
+            st.metric("Current Market Price", f"₹{current_price:,.2f}")
+            st.metric("Last 12-Month Dividends (D0)", f"₹{d0:,.2f}")
+
+            if d0 == 0:
+                st.warning("Warning: No dividends paid in the last 12 months. DDM is not suitable for non-dividend paying stocks.")
+            else:
+                intrinsic_value, ddm_error = calculate_gordon_growth_ddm(d0, required_rate_of_return, dividend_growth_rate)
+
+                if ddm_error:
+                    st.error(ddm_error)
+                else:
+                    st.metric("Calculated Intrinsic Value (DDM)", f"₹{intrinsic_value:,.2f}")
+
+                    # Determine if overweight or underweight
+                    price_difference = intrinsic_value - current_price
+                    percentage_difference = (price_difference / current_price) * 100 if current_price != 0 else 0
+
+                    st.markdown("---")
+                    st.subheader("Valuation Result")
+
+                    if percentage_difference > 10: # More than 10% undervalued
+                        st.success(f"**Underweight by Market** (Undervalued): The intrinsic value is {percentage_difference:.2f}% higher than the current price. This stock might be a **BUY** and could be **Overweight** in your portfolio.")
+                    elif percentage_difference < -10: # More than 10% overvalued
+                        st.error(f"**Overweight by Market** (Overvalued): The intrinsic value is {abs(percentage_difference):.2f}% lower than the current price. This stock might be a **SELL** and could be **Underweight** in your portfolio.")
+                    else:
+                        st.info(f"**Fairly Valued**: The intrinsic value is within ±10% of the current price ({percentage_difference:.2f}% difference). This stock might be a **HOLD**.")
+
+                    st.markdown("""
+                    <small>
+                    *Disclaimer: This tool provides a simplified valuation based on the Gordon Growth Model.
+                    It should not be used as the sole basis for investment decisions.
+                    Actual stock performance can vary significantly.
+                    Always conduct thorough research and consult with a financial advisor.*
+                    </small>
+                    """, unsafe_allow_html=True)
+
