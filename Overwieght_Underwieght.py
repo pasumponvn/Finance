@@ -8,7 +8,7 @@ import plotly.express as px # Import plotly for interactive plots
 # Set page configuration for better aesthetics
 st.set_page_config(
     page_title="NSE Stock Valuation (DDM)",
-    page_icon="�",
+    page_icon="📈",
     layout="centered",
     initial_sidebar_state="auto"
 )
@@ -109,34 +109,45 @@ ticker_input = st.text_input("Enter NSE Stock Ticker (e.g., RELIANCE.NS)", "RELI
 
 st.subheader("DDM Parameters")
 
-# Required Rate of Return (r)
-st.markdown("### Required Rate of Return (r)")
-st.markdown("""
-This represents the minimum rate of return an investor expects from an investment.
-It is often estimated using the Capital Asset Pricing Model (CAPM):
-$r = R_f + \\beta \\times (R_m - R_f)$
-Where:
-- $R_f$: Risk-free rate (e.g., yield on a 10-year Indian Government Bond).
-- $\\beta$: Beta of the stock (measures volatility relative to the market).
-- $R_m - R_f$: Market risk premium (expected market return minus risk-free rate).
-""")
+# Mode Selection for Required Rate of Return
+mode = st.radio(
+    "Select Mode for Required Rate of Return (r)",
+    ('Basic', 'Advance'),
+    index=0 # Default to Basic mode
+)
 
-# Example values for India:
-# Risk-free rate (Rf): ~7.2% (as of late 2024/early 2025 for 10-year G-Sec)
-# Market Risk Premium (Rm - Rf): ~6-8% (historical average for India)
-# Beta: Varies by stock (can be found on financial websites)
+required_rate_of_return = 0.0 # Initialize
 
-col1, col2 = st.columns(2)
-with col1:
-    risk_free_rate = st.number_input("Risk-Free Rate ($R_f$, e.g., 0.072 for 7.2%)", min_value=0.0, max_value=1.0, value=0.072, step=0.001, format="%.3f")
-with col2:
-    market_risk_premium = st.number_input("Market Risk Premium ($R_m - R_f$, e.g., 0.07 for 7%)", min_value=0.0, max_value=1.0, value=0.07, step=0.001, format="%.3f")
+if mode == 'Basic':
+    st.markdown("### Required Rate of Return (r) - Basic Mode (Default Parameters)")
+    st.markdown("Directly input your desired required rate of return. **Default value is 12%.**")
+    required_rate_of_return = st.number_input("Required Rate of Return ($r$, e.g., 0.12 for 12%)", min_value=0.0, max_value=1.0, value=0.12, step=0.001, format="%.3f")
+    st.write(f"Set Required Rate of Return ($r$): **{required_rate_of_return:.2%}**")
 
-beta_input = st.number_input("Stock Beta ($\beta$, e.g., 1.0)", min_value=0.0, value=1.0, step=0.01, format="%.2f")
+else: # Advance Mode
+    st.markdown("### Required Rate of Return (r) - Advance Mode (Customization using CAPM)")
+    st.markdown("""
+    This represents the minimum rate of return an investor expects from an investment.
+    It is often estimated using the Capital Asset Precing Model (CAPM):
+    $r = R_f + \\beta \\times (R_m - R_f)$
+    Where:
+    - $R_f$: Risk-free rate (e.g., yield on a 10-year Indian Government Bond).
+    - $\\beta$: Beta of the stock (measures volatility relative to the market).
+    - $R_m - R_f$: Market risk premium (expected market return minus risk-free rate).
+    """)
 
-# Calculate 'r' using CAPM
-required_rate_of_return = risk_free_rate + beta_input * market_risk_premium
-st.write(f"Calculated Required Rate of Return ($r$): **{required_rate_of_return:.2%}**")
+    col1, col2 = st.columns(2)
+    with col1:
+        risk_free_rate = st.number_input("Risk-Free Rate ($R_f$, e.g., 0.072 for 7.2%)", min_value=0.0, max_value=1.0, value=0.072, step=0.001, format="%.3f")
+    with col2:
+        market_risk_premium = st.number_input("Market Risk Premium ($R_m - R_f$, e.g., 0.07 for 7%)", min_value=0.0, max_value=1.0, value=0.07, step=0.001, format="%.3f")
+
+    beta_input = st.number_input("Stock Beta ($\beta$, e.g., 1.0)", min_value=0.0, value=1.0, step=0.01, format="%.2f")
+
+    # Calculate 'r' using CAPM
+    required_rate_of_return = risk_free_rate + beta_input * market_risk_premium
+    st.write(f"Calculated Required Rate of Return ($r$): **{required_rate_of_return:.2%}**")
+
 
 st.markdown("### Dividend Growth Rate (g)")
 st.markdown("""
@@ -147,7 +158,8 @@ Where:
 - $ROE$: Return on Equity
 - Payout Ratio: Dividends / Net Income
 """)
-dividend_growth_rate = st.number_input("Dividend Growth Rate ($g$, e.g., 0.05 for 5%)", min_value=0.0, max_value=required_rate_of_return - 0.001, value=0.05, step=0.001, format="%.3f", help="Must be less than Required Rate of Return (r)")
+# Added a note about the default value for 'g'
+dividend_growth_rate = st.number_input("Dividend Growth Rate ($g$, e.g., 0.05 for 5%)", min_value=0.0, max_value=required_rate_of_return - 0.001, value=0.05, step=0.001, format="%.3f", help="Default value is 5%. Must be less than Required Rate of Return (r)")
 
 
 if st.button("Analyze Stock"):
@@ -236,5 +248,3 @@ if st.button("Analyze Stock"):
                     Always conduct thorough research and consult with a financial advisor.*
                     </small>
                     """, unsafe_allow_html=True)
-
-
