@@ -237,4 +237,4 @@ if st.button("Analyze Stock"):
                     </small>
                     """, unsafe_allow_html=True)
 
-�
+
