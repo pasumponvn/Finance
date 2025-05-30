@@ -1,2 +1,6 @@
 yfinance==0.2.4
 matplotlib
+numpy
+pandas
+plotly
+streamlit
