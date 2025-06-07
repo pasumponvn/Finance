@@ -23,6 +23,7 @@ def get_nifty50_symbols():
         return symbols
     except Exception as e:
         st.error(f"Could not fetch Nifty 50 symbols from NSE: {e}")
+        st.info("Please ensure you have an active internet connection and that NSE website is accessible.")
         return []
 
 @st.cache_data
@@ -40,7 +41,7 @@ def get_financial_data(ticker_symbol):
         return income_stmt, balance_sheet, cash_flow
     except Exception as e:
         st.warning(f"Could not fetch financial data for {ticker_symbol} from Yahoo Finance: {e}")
-        st.info("Yahoo Finance typically provides 4-5 years of annual financial statements.")
+        st.info("Yahoo Finance typically provides 4-5 years of annual financial statements. Data for some tickers might be unavailable or incomplete.")
         return None, None, None
 
 def calculate_fcf(income_stmt, cash_flow, balance_sheet):
@@ -179,10 +180,16 @@ This is for educational and illustrative purposes only and should not be used fo
 st.sidebar.header("Select Stock & DCF Assumptions")
 
 nifty_symbols = get_nifty50_symbols()
+# Ensure nifty_symbols is not empty before proceeding
+if not nifty_symbols:
+    st.error("Could not load Nifty 50 symbols. Please check your internet connection or try again later.")
+    st.stop() # Stop execution if symbols can't be loaded
+
 selected_symbol_yf = st.sidebar.selectbox(
     "Select a Nifty 50 Stock (with .NS suffix)",
     options=nifty_symbols,
-    index=nifty_symbols.index('RELIANCE.NS') if 'RELIANCE.NS' in nifty_symbols else 0 # Default to Reliance
+    # Set default to RELIANCE.NS if available, otherwise first symbol in the list
+    index=nifty_symbols.index('RELIANCE.NS') if 'RELIANCE.NS' in nifty_symbols else 0
 )
 
 if selected_symbol_yf:
