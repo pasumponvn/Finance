@@ -429,4 +429,88 @@ if selected_symbol_yf:
 
             intrinsic_value_per_share_fcfe = None
             if not historical_fcfe.empty:
-                st.write(f"Showing {len(historical_fcfe)} years of historical F
+                st.write(f"Showing {len(historical_fcfe)} years of historical FCFE data available:")
+                historical_fcfe.index = historical_fcfe.index.map(lambda x: x.year)
+                st.dataframe(historical_fcfe.to_frame(name='FCFE').T.style.format("{:,.0f}"))
+
+                intrinsic_value_per_share_fcfe, equity_value_fcfe, projected_fcf_fcfe, discounted_fcf_fcfe, terminal_value_fcfe, discounted_terminal_value_fcfe, enterprise_value_fcfe_dummy = calculate_dcf_model(
+                    historical_fcfe,
+                    forecast_years,
+                    initial_growth_rates_input,
+                    cost_of_equity, # Use Cost of Equity for FCFE
+                    perpetual_growth_rate,
+                    current_shares_outstanding,
+                    current_cash, # These are not used for FCFE calculation of Equity Value directly
+                    total_debt,   # as FCFE already is for equity holders
+                    valuation_type="FCFE"
+                )
+
+                if intrinsic_value_per_share_fcfe is not None:
+                    col_fcfe_val1, col_fcfe_val2, col_fcfe_val3 = st.columns(3)
+                    col_fcfe_val1.metric("FCFE Intrinsic Value per Share", f"Rs. {intrinsic_value_per_share_fcfe:,.2f}")
+                    
+                    upside_downside_fcfe = ((intrinsic_value_per_share_fcfe - current_market_price) / current_market_price) * 100
+                    col_fcfe_val2.metric("Upside/Downside (FCFE) (%)", f"{upside_downside_fcfe:,.2f}%")
+                    
+                    if upside_downside_fcfe >= valuation_threshold_pct:
+                        col_fcfe_val3.success(f"**OVERWEIGHT (FCFE):** > {valuation_threshold_pct:.1f}%")
+                    elif upside_downside_fcfe <= -valuation_threshold_pct:
+                        col_fcfe_val3.warning(f"**UNDERWEIGHT (FCFE):** < -{valuation_threshold_pct:.1f}%")
+                    else:
+                        col_fcfe_val3.info(f"**FAIRLY VALUED (FCFE):** within +/- {valuation_threshold_pct:.1f}%")
+
+                    with st.expander("Show FCFE Detailed Projections"):
+                        st.markdown(f"**FCFE Equity Value:** Rs. {equity_value_fcfe:,.0f}")
+                        
+                        proj_fcf_years = [f"Proj {i+1}" for i in range(forecast_years)]
+                        proj_fcf_df_fcfe = pd.DataFrame({
+                            'Year': proj_fcf_years,
+                            'Projected FCFE (Rs.)': projected_fcf_fcfe,
+                            'Discounted FCFE (Rs.)': discounted_fcf_fcfe
+                        })
+                        st.dataframe(proj_fcf_df_fcfe.set_index('Year').style.format("{:,.0f}"))
+                        st.markdown(f"**Terminal Value (FCFE):** Rs. {terminal_value_fcfe:,.0f}")
+                        st.markdown(f"**Discounted Terminal Value (FCFE):** Rs. {discounted_terminal_value_fcfe:,.0f}")
+                else:
+                    st.warning("FCFE DCF calculation could not be completed with provided parameters.")
+            else:
+                st.warning("Historical FCFE could not be calculated. Check financial data availability or parameters.")
+            
+            st.markdown("---")
+            st.subheader("Comparison of Valuation Methods")
+
+            # Get Nifty 50 Index Value
+            nifty_index_value = get_nifty_index_value()
+
+            # Create comparison chart
+            labels = ['Current Market Price']
+            values = [current_market_price]
+            colors = ['blue'] # Color for market price
+
+            if intrinsic_value_per_share_fcff is not None:
+                labels.append('FCFF Intrinsic Value')
+                values.append(intrinsic_value_per_share_fcff)
+                colors.append('green')
+            
+            if intrinsic_value_per_share_fcfe is not None:
+                labels.append('FCFE Intrinsic Value')
+                values.append(intrinsic_value_per_share_fcfe)
+                colors.append('orange')
+            
+            if nifty_index_value is not None:
+                labels.append('Nifty 50 Index Value')
+                values.append(nifty_index_value)
+                colors.append('red') # Red color for Nifty 50 Index
+
+            if len(values) > 1:
+                fig_compare = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=colors)])
+                fig_compare.update_layout(title_text='Comparison of Valuation per Share / Index Value',
+                                        yaxis_title='Value (Rs.)',
+                                        height=400, margin=dict(l=20, r=20, t=50, b=20))
+                st.plotly_chart(fig_compare, use_container_width=True)
+            else:
+                st.warning("Not enough valid values to create a comparison chart.")
+
+        except Exception as e:
+            st.error(f"An unexpected error occurred during DCF analysis: {e}. Please ensure the selected stock has complete financial data on Yahoo Finance.")
+            st.exception(e) # Display full traceback for debugging
