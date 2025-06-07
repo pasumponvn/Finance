@@ -5,5 +5,5 @@ pandas
 plotly
 streamlit
 requests
-import io
+io
 datetime
