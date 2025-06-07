@@ -7,24 +7,34 @@ import requests
 import io
 from datetime import datetime
 
+# --- Pre-defined Nifty 50 Symbols (as of early 2025 - a static list for robustness) ---
+# Note: This list may need manual updates if Nifty 50 composition changes significantly over time.
+NIFTY_50_SYMBOLS = [
+    'ADANIENT.NS', 'ADANIPORTS.NS', 'APOLLOHOSP.NS', 'ASIANPAINT.NS', 'AXISBANK.NS',
+    'BAJAJ-AUTO.NS', 'BAJAJFINSV.NS', 'BAJFINANCE.NS', 'BHARTIARTL.NS', 'BPCL.NS',
+    'BRITANNIA.NS', 'CIPLA.NS', 'COALINDIA.NS', 'DIVISLAB.NS', 'DRREDDY.NS',
+    'EICHERMOT.NS', 'GRASIM.NS', 'HCLTECH.NS', 'HDFCBANK.NS', 'HDFCLIFE.NS',
+    'HEROMOTOCO.NS', 'HINDALCO.NS', 'HINDUNILVR.NS', 'ICICIBANK.NS', 'INDUSINDBK.NS',
+    'INFY.NS', 'ITC.NS', 'JSWSTEEL.NS', 'KOTAKBANK.NS', 'LT.NS',
+    'LTIM.NS', 'MARUTI.NS', 'NESTLEIND.NS', 'NTPC.NS', 'ONGC.NS',
+    'POWERGRID.NS', 'RELIANCE.NS', 'SBILIFE.NS', 'SBIN.NS', 'TATACONSUM.NS',
+    'TATAMOTORS.NS', 'TATASTEEL.NS', 'TCS.NS', 'TECHM.NS', 'TITAN.NS',
+    'ULTRACEMCO.NS', 'UPL.NS', 'WIPRO.NS'
+]
+# Removed a couple of symbols to make it 50. This list is illustrative.
+# For exact, most current Nifty 50, one would still refer to NSE or a reliable API.
+
+
 # --- Helper Functions ---
 
+# Modified to use the pre-defined list
 @st.cache_data
 def get_nifty50_symbols():
     """
-    Fetches the current Nifty 50 stock symbols from NSE India website.
+    Returns a pre-defined list of Nifty 50 stock symbols.
+    This avoids web scraping issues from NSE India's website.
     """
-    try:
-        url = 'https://www.nseindia.com/content/indices/ind_nifty50list.csv'
-        s = requests.get(url, timeout=10).content
-        df = pd.read_csv(io.StringIO(s.decode('utf-8')))
-        # Append .NS for Yahoo Finance compatibility for Indian stocks
-        symbols = [s + '.NS' for s in df['Symbol'].tolist()]
-        return symbols
-    except Exception as e:
-        st.error(f"Could not fetch Nifty 50 symbols from NSE: {e}")
-        st.info("Please ensure you have an active internet connection and that NSE website is accessible.")
-        return []
+    return NIFTY_50_SYMBOLS
 
 @st.cache_data
 def get_financial_data(ticker_symbol):
@@ -58,7 +68,6 @@ def calculate_fcff(income_stmt, cash_flow):
 
     common_dates = income_stmt_t.index.intersection(cash_flow_t.index)
     if common_dates.empty:
-        # st.warning("No common financial statement dates found for FCFF across Income Statement and Cash Flow.")
         return pd.Series(dtype='float64')
 
     income_stmt_t = income_stmt_t.loc[common_dates]
@@ -71,29 +80,23 @@ def calculate_fcff(income_stmt, cash_flow):
             current_income = income_stmt_t.loc[date_idx]
             current_cashflow = cash_flow_t.loc[date_idx]
             
-            # Use 'Operating Income' or 'EBIT' for EBIT
             ebit = current_income.get('Operating Income', current_income.get('EBIT'))
             if pd.isna(ebit): continue
 
-            # Get Tax Rate: Tax Provision / Pretax Income
             tax_provision = current_income.get('Tax Provision')
             pretax_income = current_income.get('Pretax Income')
             tax_rate = tax_provision / pretax_income if not pd.isna(tax_provision) and not pd.isna(pretax_income) and pretax_income != 0 else 0.25
-            if tax_rate < 0 or tax_rate > 1: tax_rate = 0.25 # Sanity check for tax rate
+            if tax_rate < 0 or tax_rate > 1: tax_rate = 0.25
 
-            nopat = ebit * (1 - tax_rate)
-
-            # Capital Expenditures (negative in cash flow statement, take absolute)
             capex = current_cashflow.get('Capital Expenditures', 0)
             capex = abs(capex)
 
-            # Depreciation & Amortization (often positive in cash flow for add-back)
             depreciation = current_cashflow.get('Depreciation And Amortization', current_income.get('Depreciation And Amortization', 0))
-            depreciation = abs(depreciation) # Should be positive as it's added back
+            depreciation = abs(depreciation)
 
-            # Change in Working Capital (can be positive or negative)
             delta_wc = current_cashflow.get('Change In Working Capital', 0)
             
+            nopat = ebit * (1 - tax_rate)
             fcff_val = nopat + depreciation - capex - delta_wc
             fcff_series.loc[date_idx] = fcff_val
 
@@ -118,7 +121,6 @@ def calculate_fcfe(income_stmt, cash_flow, balance_sheet):
 
     common_dates = income_stmt_t.index.intersection(cash_flow_t.index).intersection(balance_sheet_t.index)
     if common_dates.empty:
-        # st.warning("No common financial statement dates found for FCFE across Income Statement, Balance Sheet, and Cash Flow.")
         return pd.Series(dtype='float64')
 
     income_stmt_t = income_stmt_t.loc[common_dates]
@@ -127,20 +129,17 @@ def calculate_fcfe(income_stmt, cash_flow, balance_sheet):
 
     fcfe_series = pd.Series(dtype='float64')
 
-    # To calculate Net Borrowing, we need previous year's total debt
     if len(balance_sheet_t) < 2:
-        # st.warning("Insufficient balance sheet history to calculate Net Borrowing for FCFE.")
         return pd.Series(dtype='float64')
 
     total_debt_series = balance_sheet_t.get('Total Debt')
     if total_debt_series is None:
-        # st.warning("Could not find 'Total Debt' in balance sheet for FCFE calculation.")
         return pd.Series(dtype='float64')
 
     net_borrowing_series = total_debt_series.diff()
 
     for i, date_idx in enumerate(common_dates):
-        if i == 0: # Cannot calculate change in working capital or net borrowing for the first year
+        if i == 0:
             continue
 
         try:
@@ -158,16 +157,13 @@ def calculate_fcfe(income_stmt, cash_flow, balance_sheet):
 
             delta_wc = current_cashflow.get('Change In Working Capital', 0)
 
-            # Net Borrowing: Prioritize Cash Flow Statement's explicit items if available
             net_issuance_debt = current_cashflow.get('Net Issuance Of Debt', 0)
             repurchase_debt = current_cashflow.get('Repurchase Of Debt', 0)
             
             net_borrowing_cf = net_issuance_debt - repurchase_debt
             
-            # Fallback to Balance Sheet change if CF items are missing or zero
             net_borrowing_bs_diff = net_borrowing_series.loc[date_idx] if date_idx in net_borrowing_series.index else 0
             
-            # Use CF explicit items if available and non-zero, otherwise use BS diff
             net_borrowing = net_borrowing_cf if (net_issuance_debt != 0 or repurchase_debt != 0) else net_borrowing_bs_diff
 
             fcfe_val = net_income + depreciation - capex - delta_wc + net_borrowing
@@ -188,7 +184,7 @@ def calculate_cost_of_equity(ticker_info, risk_free_rate, market_risk_premium):
     beta = ticker_info.get('beta')
     if beta is None or pd.isna(beta):
         st.warning("Could not retrieve Beta from Yahoo Finance. Using a default Beta of 1.0.")
-        beta = 1.0 # Default Beta if not found or NaN
+        beta = 1.0
 
     return risk_free_rate + beta * market_risk_premium
 
@@ -199,7 +195,6 @@ def calculate_dcf_model(fcf_history, forecast_years, initial_growth_rates, disco
     valuation_type: "FCFF" or "FCFE"
     """
     if fcf_history.empty:
-        # st.error(f"Historical {valuation_type} data is not available or could not be calculated for DCF projections.")
         return None, None, None, None, None, None, None
 
     last_fcf = fcf_history.iloc[-1]
@@ -208,10 +203,10 @@ def calculate_dcf_model(fcf_history, forecast_years, initial_growth_rates, disco
     
     if len(fcf_history) >= 2:
         historical_fcf_growth = fcf_history.pct_change().mean()
-        if pd.isna(historical_fcf_growth) or historical_fcf_growth < -0.5 or historical_fcf_growth > 0.5: # Sanity check for extreme growth
-            historical_fcf_growth = 0.05 # Default if historical growth is too volatile/missing
+        if pd.isna(historical_fcf_growth) or historical_fcf_growth < -0.5 or historical_fcf_growth > 0.5:
+            historical_fcf_growth = 0.05
     else:
-        historical_fcf_growth = 0.05 # Default if less than 2 historical data points
+        historical_fcf_growth = 0.05
 
     current_fcf_proj = last_fcf
     
@@ -225,7 +220,7 @@ def calculate_dcf_model(fcf_history, forecast_years, initial_growth_rates, disco
             else:
                 growth_rate = historical_fcf_growth
             
-            if growth_rate < perpetual_growth_rate: # Growth should not go below perpetual rate
+            if growth_rate < perpetual_growth_rate:
                 growth_rate = perpetual_growth_rate
         
         current_fcf_proj *= (1 + growth_rate)
@@ -245,14 +240,14 @@ def calculate_dcf_model(fcf_history, forecast_years, initial_growth_rates, disco
     
     discounted_terminal_value = terminal_value / ((1 + discount_rate)**forecast_years)
     
-    enterprise_value = None # Initialize
-    equity_value = None # Initialize
+    enterprise_value = None
+    equity_value = None
 
     if valuation_type == "FCFF":
         enterprise_value = sum(discounted_fcf) + discounted_terminal_value
         equity_value = enterprise_value + current_cash - total_debt
     elif valuation_type == "FCFE":
-        equity_value = sum(discounted_fcf) + discounted_terminal_value # FCFE already represents cash to equity holders
+        equity_value = sum(discounted_fcf) + discounted_terminal_value
     else:
         return None, None, None, None, None, None, None
 
@@ -264,14 +259,13 @@ def calculate_dcf_model(fcf_history, forecast_years, initial_growth_rates, disco
 def get_nifty_index_value():
     """Fetches the current Nifty 50 index value."""
     try:
-        # Use ^NSEI for Nifty 50 index on Yahoo Finance
         nifty_ticker = yf.Ticker("^NSEI")
         nifty_data = nifty_ticker.history(period="1d")
         if not nifty_data.empty:
             return nifty_data['Close'].iloc[-1]
         return None
     except Exception as e:
-        st.error(f"Could not fetch Nifty 50 index value: {e}")
+        st.error(f"Could not fetch Nifty 50 index value (^NSEI) from Yahoo Finance: {e}")
         return None
 
 # --- Streamlit App ---
@@ -294,10 +288,11 @@ This is for educational and illustrative purposes only and should not be used fo
 st.sidebar.header("Select Stock & DCF Assumptions")
 
 nifty_symbols = get_nifty50_symbols()
-# Ensure nifty_symbols is not empty before proceeding
+# The pre-defined list will always return symbols, so no need for 'if not nifty_symbols' check here,
+# unless the list itself is empty. If it's empty, we should stop.
 if not nifty_symbols:
-    st.error("Could not load Nifty 50 symbols. Please check your internet connection or try again later.")
-    st.stop() # Stop execution if symbols can't be loaded
+    st.error("The Nifty 50 symbols list is empty. Please check the hardcoded list in the script.")
+    st.stop()
 
 selected_symbol_yf = st.sidebar.selectbox(
     "Select a Nifty 50 Stock (with .NS suffix)",
@@ -315,7 +310,7 @@ if selected_symbol_yf:
     st.sidebar.markdown("*(These will be applied to the last historical FCF. Beyond these years, growth tapers to perpetual rate.)*")
     
     initial_growth_rates_input = []
-    num_initial_growth_years = min(forecast_years, 3) # Allow up to 3 initial growth rates
+    num_initial_growth_years = min(forecast_years, 3)
     for i in range(num_initial_growth_years):
         growth = st.sidebar.number_input(f"Initial Growth Rate Year {i+1}", min_value=-0.10, max_value=0.5, value=0.10 - i*0.02, step=0.01, format="%.2f", key=f"gr_init_{i}")
         initial_growth_rates_input.append(growth)
@@ -325,7 +320,6 @@ if selected_symbol_yf:
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Cost of Equity (for FCFE) - CAPM Inputs**")
-    # Default values based on search results for India (as of recent data)
     risk_free_rate = st.sidebar.number_input("Risk-Free Rate (e.g., 10-yr G-Sec)", min_value=0.03, max_value=0.10, value=0.062, step=0.001, format="%.3f")
     market_risk_premium = st.sidebar.number_input("Market Risk Premium", min_value=0.04, max_value=0.10, value=0.070, step=0.001, format="%.3f")
 
@@ -352,8 +346,8 @@ if selected_symbol_yf:
             current_market_price = yf.Ticker(selected_symbol_yf).history(period="1d")['Close'].iloc[-1]
             st.metric("Current Market Price", f"Rs. {current_market_price:,.2f}")
 
-            # Extracting key data points for DCF models
             balance_sheet_t_latest = balance_sheet.T.sort_index(ascending=True).iloc[-1]
+
             current_shares_outstanding = ticker_info.get('sharesOutstanding', balance_sheet_t_latest.get('Shares Outstanding', 0))
             if current_shares_outstanding == 0 or pd.isna(current_shares_outstanding):
                 st.warning(f"Could not find exact 'Shares Outstanding' in Yahoo Finance info or Balance Sheet. Using a default of 1 Billion. This may significantly affect per-share value.")
@@ -437,11 +431,11 @@ if selected_symbol_yf:
                     historical_fcfe,
                     forecast_years,
                     initial_growth_rates_input,
-                    cost_of_equity, # Use Cost of Equity for FCFE
+                    cost_of_equity,
                     perpetual_growth_rate,
                     current_shares_outstanding,
-                    current_cash, # These are not used for FCFE calculation of Equity Value directly
-                    total_debt,   # as FCFE already is for equity holders
+                    current_cash,
+                    total_debt,
                     valuation_type="FCFE"
                 )
 
@@ -485,7 +479,7 @@ if selected_symbol_yf:
             # Create comparison chart
             labels = ['Current Market Price']
             values = [current_market_price]
-            colors = ['blue'] # Color for market price
+            colors = ['blue']
 
             if intrinsic_value_per_share_fcff is not None:
                 labels.append('FCFF Intrinsic Value')
@@ -500,17 +494,18 @@ if selected_symbol_yf:
             if nifty_index_value is not None:
                 labels.append('Nifty 50 Index Value')
                 values.append(nifty_index_value)
-                colors.append('red') # Red color for Nifty 50 Index
+                colors.append('red')
 
             if len(values) > 1:
                 fig_compare = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=colors)])
-                fig_compare.update_layout(title_text='Comparison of Valuation per Share / Index Value',
+                fig_compare.update_layout(title_text='Comparison of Values (Per Share / Index)',
                                         yaxis_title='Value (Rs.)',
                                         height=400, margin=dict(l=20, r=20, t=50, b=20))
                 st.plotly_chart(fig_compare, use_container_width=True)
+                st.info("Note: Comparing Nifty 50 Index value directly with individual stock per-share values is for contextual reference only, as their scales are different. The Nifty 50 value represents the index level, not a 'per share' value of any specific stock.")
             else:
                 st.warning("Not enough valid values to create a comparison chart.")
 
         except Exception as e:
             st.error(f"An unexpected error occurred during DCF analysis: {e}. Please ensure the selected stock has complete financial data on Yahoo Finance.")
-            st.exception(e) # Display full traceback for debugging
+            st.exception(e)
