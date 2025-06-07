@@ -188,7 +188,8 @@ selected_symbol_yf = st.sidebar.selectbox(
 if selected_symbol_yf:
     st.sidebar.subheader("DCF Model Parameters")
     
-    forecast_years = st.sidebar.slider("Forecast Period (Years)", 5, 10, 5)
+    # Changed forecast_years to start from 4
+    forecast_years = st.sidebar.slider("Forecast Period (Years)", 4, 10, 4)
 
     st.sidebar.markdown("**Annual Growth Rates for FCF (e.g., 0.10 for 10%)**")
     st.sidebar.markdown("*(These will be applied to the last historical FCF. Beyond these years, growth tapers to perpetual rate.)*")
@@ -282,7 +283,7 @@ if selected_symbol_yf:
 
 
                     st.markdown(f"**Enterprise Value:** Rs. {enterprise_value:,.0f}")
-                    st.markdown(f"**Equity Value:** Rs. {equity_value:,.0f}") # Corrected to use equity_value directly
+                    st.markdown(f"**Equity Value:** Rs. {equity_value:,.0f}")
 
                     # --- Detailed Projections Table ---
                     st.subheader("Projected Free Cash Flow (FCF) Details")
