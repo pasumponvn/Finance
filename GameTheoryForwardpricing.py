@@ -1,0 +1,87 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+import streamlit as st
+
+# Page config
+st.set_page_config(page_title="Forward Contract Game Simulator", layout="wide")
+
+st.markdown("### Forward Contract Game Simulator")
+
+# Sidebar controls
+st.sidebar.markdown("## Simulation Parameters")
+forward_price = st.sidebar.slider('Forward Price', min_value=50, max_value=150, value=100, step=5)
+future_price = st.sidebar.number_input('Future Price', min_value=50, max_value=200, value=105)
+rounds = st.sidebar.slider('Rounds', min_value=10, max_value=500, value=100, step=10)
+players = st.sidebar.slider('Players', min_value=2, max_value=6, value=3, step=1)
+
+# Simulation
+def run_simulation(forward_price, future_price, rounds, players):
+    strategies = np.ones(players) * 0.5
+    history, player_actions, payoffs = [[] for _ in range(players)], [[] for _ in range(players)], [[] for _ in range(players)]
+
+    def payoff(action, forward_price, future_price):
+        return future_price - forward_price if action == "buy" else forward_price - future_price
+
+    for r in range(rounds):
+        future_price_round = np.random.normal(future_price, 5)
+        for i in range(players):
+            action = "buy" if np.random.rand() < strategies[i] else "sell"
+            payoff_i = payoff(action, forward_price, future_price_round)
+            strategies[i] += 0.05 * (payoff_i > 0) - 0.05 * (payoff_i < 0)
+            strategies[i] = np.clip(strategies[i], 0, 1)
+            history[i].append(strategies[i])
+            player_actions[i].append(action)
+            payoffs[i].append(payoff_i)
+    return history, player_actions, payoffs
+
+history, player_actions, payoffs = run_simulation(forward_price, future_price, rounds, players)
+
+# Plots
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+
+# Strategy evolution
+for i in range(players):
+    ax1.plot(history[i], label=f"Player {i+1}", linewidth=2)
+ax1.axhline(0.5, color="black", linestyle="--", label="Mixed Equilibrium")
+ax1.set_xlabel("Round")
+ax1.set_ylabel("Probability of Buying")
+ax1.set_title("Strategy Evolution Over Time")
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+# Action distribution
+action_counts = [player_actions[i].count("buy") for i in range(players)]
+ax2.bar([f"Player {i+1}" for i in range(players)], action_counts, color='steelblue')
+ax2.set_ylabel("Number of Buy Actions")
+ax2.set_title("Buy Action Distribution")
+ax2.grid(True, axis='y', alpha=0.3)
+
+# Cumulative payoffs
+for i in range(players):
+    cumulative = np.cumsum(payoffs[i])
+    ax3.plot(cumulative, label=f"Player {i+1}", linewidth=2)
+ax3.set_xlabel("Round")
+ax3.set_ylabel("Cumulative Payoff")
+ax3.set_title("Cumulative Payoff Over Time")
+ax3.legend()
+ax3.grid(True, alpha=0.3)
+
+# Final statistics
+final_strategies = [history[i][-1] for i in range(players)]
+final_payoffs = [sum(payoffs[i]) for i in range(players)]
+stats_text = "Final Statistics:\n" + "="*30 + "\n"
+for i in range(players):
+    stats_text += f"Player {i+1}:\n"
+    stats_text += f"  Buy Probability: {final_strategies[i]:.3f}\n"
+    stats_text += f"  Total Payoff: {final_payoffs[i]:.2f}\n"
+
+ax4.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
+         verticalalignment='center', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+ax4.axis('off')
+
+plt.tight_layout()
+
+# Display
+st.pyplot(fig, clear_figure=True)
+st.success(f"✓ Simulation complete: {rounds} rounds, {players} players, Forward Price: {forward_price}, Future Price: {future_price}")
