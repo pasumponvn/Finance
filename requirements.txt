@@ -5,4 +5,5 @@ pandas
 plotly
 streamlit
 requests
-altair
+altair<5
+vega_datasets
