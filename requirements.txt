@@ -7,3 +7,4 @@ streamlit
 requests
 altair<5
 vega_datasets
+imghdr-py
