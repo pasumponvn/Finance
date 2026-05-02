@@ -53,40 +53,33 @@ for message in st.session_state.messages:
 
 # 5. Interaction Logic
 if prompt := st.chat_input("Illuminate your thoughts..."):
-    # Add user query
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Assistant Response
     with st.chat_message("assistant"):
-        # System Identity: Defines Aura AI's personality
-        persona = (
-            "You are Aura AI, a sophisticated, highly intelligent, and creative assistant. "
-            "Your tone is professional yet accessible, clear, and visionary."
-        )
-        
-        # Formatting for Gemma-2
-        full_prompt = f"<start_of_turn>user\n{persona}\n\nQuestion: {prompt}<end_of_turn>\n<start_of_turn>model\n"
-        
         try:
-            # Stream the response for a "fancy" real-time feel
-            response_placeholder = st.empty()
-            full_response = ""
+            # We use chat_completion instead of text_generation
+            # This is compatible with the 'conversational' task requirement
+            response = ""
+            resp_container = st.empty()
             
-            # Using text_generation with stream=True
-            for token in client.text_generation(
-                full_prompt,
-                max_new_tokens=1024,
+            for chunk in client.chat_completion(
+                messages=[
+                    {"role": "system", "content": "You are Aura AI, a sophisticated and visionary assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1024,
                 temperature=0.7,
                 stream=True,
-                stop_sequences=["<end_of_turn>"]
             ):
-                full_response += token
-                response_placeholder.markdown(full_response + "▌")
+                token = chunk.choices[0].delta.content
+                if token:
+                    response += token
+                    resp_container.markdown(response + "▌")
             
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            resp_container.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
             
         except Exception as e:
             st.error(f"Aura Connection Interrupted: {e}")
