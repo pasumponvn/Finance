@@ -4,7 +4,7 @@ from huggingface_hub import InferenceClient
 # 1. Page Configuration
 st.set_page_config(page_title="Aura AI", page_icon="🌐")
 
-# 2. Custom CSS - Fixed the parameter name to avoid TypeError
+# 2. Custom CSS
 st.markdown("""
     <style>
     .main {
@@ -32,10 +32,8 @@ except Exception:
     st.error("Credential Error: Please add your HF_TOKEN to Streamlit Secrets.")
     st.stop()
 
-# 4. Initialize Model - Using a stable model ID
-#client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
-# Change the model ID to Mistral 7B for better reliability
-client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
+# 4. Initialize Model - Chat-ready Gemma IT
+client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
 
 # 5. Session State for Chat History
 if "messages" not in st.session_state:
@@ -57,7 +55,7 @@ if prompt := st.chat_input("Illuminate your thoughts..."):
             response_placeholder = st.empty()
             full_response = ""
             
-            # Using chat_completion (Requires huggingface_hub >= 0.23.0)
+            # Chat completion with streaming
             for chunk in client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are Aura AI, a visionary assistant."},
