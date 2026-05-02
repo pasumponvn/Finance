@@ -1,77 +1,63 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 
-# 1. Page Configuration
+# Page setup
 st.set_page_config(page_title="Aura AI", page_icon="🌐")
-
-# 2. Custom CSS
-st.markdown("""
-    <style>
-    .main {
-        background-color: #0e1117;
-        color: #ffffff;
-    }
-    .stTitle {
-        background: -webkit-linear-gradient(#00f2fe, #4facfe);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 800;
-        font-size: 3rem !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.title("🌐 Aura AI")
-st.caption("Next-Gen Intelligent Assistant | Powered by Gemma-2")
+st.caption("Hello World Chatbot")
 
-# 3. Secure Token Access
+# Hugging Face token
 try:
     HF_TOKEN = st.secrets["HF_TOKEN"]
 except Exception:
-    st.error("Credential Error: Please add your HF_TOKEN to Streamlit Secrets.")
+    st.error("Please add your HF_TOKEN to Streamlit Secrets.")
     st.stop()
 
-# 4. Initialize Model - Chat-ready Gemma IT
-client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
+# Pick a model (chat-ready recommended, e.g. LLaMA-2-Chat)
+MODEL_ID = "meta-llama/Llama-2-7b-chat-hf"
+client = InferenceClient(model=MODEL_ID, token=HF_TOKEN)
 
-# 5. Session State for Chat History
+# Chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display conversation history
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Display past messages
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# 6. Interaction Logic
-if prompt := st.chat_input("Illuminate your thoughts..."):
+# Input + response
+if prompt := st.chat_input("Say hello..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        full_response = ""
+
         try:
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            # Chat completion with streaming
+            # Try chat_completion
             for chunk in client.chat_completion(
-                messages=[
-                    {"role": "system", "content": "You are Aura AI, a visionary assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1024,
-                temperature=0.7,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=128,
                 stream=True,
             ):
                 token = chunk.choices[0].delta.content
                 if token:
                     full_response += token
                     response_placeholder.markdown(full_response + "▌")
-            
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-        except Exception as e:
-            st.error(f"Aura Connection Interrupted: {e}")
+        except Exception:
+            # Fallback to text_generation
+            for chunk in client.text_generation(
+                prompt=f"User: {prompt}\nAssistant:",
+                max_new_tokens=128,
+                stream=True,
+            ):
+                token = chunk.token
+                if token:
+                    full_response += token
+                    response_placeholder.markdown(full_response + "▌")
+
+        response_placeholder.markdown(full_response)
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
