@@ -5,5 +5,5 @@ pandas
 plotly
 altair<5
 vega_datasets
+streamlit==1.32.0
 huggingface_hub
-streamlit>=1.35.0
