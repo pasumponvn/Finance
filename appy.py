@@ -33,7 +33,9 @@ except Exception:
     st.stop()
 
 # 4. Initialize Model - Using a stable model ID
-client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
+#client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
+# Change the model ID to Mistral 7B for better reliability
+client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
 
 # 5. Session State for Chat History
 if "messages" not in st.session_state:
