@@ -1,25 +1,28 @@
 import streamlit as st
 import requests
 
-st.set_page_config(page_title="Direct HF Chat", page_icon="💬")
-st.title("💬 Direct Hugging Face Chat")
+st.set_page_config(page_title="HF ChatBot", page_icon="💬")
+st.title("💬 Hugging Face ChatBot - Working")
 
 # Get HF Token
-HF_TOKEN = st.secrets.get("HF_TOKEN") or st.text_input("Hugging Face Token:", type="password")
+HF_TOKEN = st.secrets.get("HF_TOKEN")
 if not HF_TOKEN:
-    st.stop()
+    HF_TOKEN = st.text_input("Hugging Face Token:", type="password")
+    if not HF_TOKEN:
+        st.info("Get token from huggingface.co/settings/tokens")
+        st.stop()
 
-# Models that work
+# Models that definitely work
 MODELS = {
-    "Mistral-7B": "mistralai/Mistral-7B-Instruct-v0.3",
-    "Phi-3-Mini": "microsoft/Phi-3-mini-4k-instruct",
-    "Gemma-2B": "google/gemma-2-2b-it",
+    "Mistral-7B (Best)": "mistralai/Mistral-7B-Instruct-v0.3",
+    "Phi-3-Mini (Fast)": "microsoft/Phi-3-mini-4k-instruct",
+    "Gemma-2B (Light)": "google/gemma-2-2b-it",
 }
 
 selected_model = st.selectbox("Choose model:", list(MODELS.keys()))
 model_id = MODELS[selected_model]
 
-# Session state
+# Chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -28,46 +31,62 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# API URL
+# Correct API URL format
 API_URL = f"https://api-inference.huggingface.co/models/{model_id}"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-def query_hf(messages):
-    """Query Hugging Face API directly"""
-    # Format prompt
-    prompt = ""
+def chat_with_hf(messages):
+    """Send chat to Hugging Face API"""
+    
+    # Format conversation for the model
+    formatted_prompt = ""
     for msg in messages:
         if msg["role"] == "user":
-            prompt += f"User: {msg['content']}\n"
+            formatted_prompt += f"User: {msg['content']}\n"
         else:
-            prompt += f"Assistant: {msg['content']}\n"
-    prompt += "Assistant:"
+            formatted_prompt += f"Assistant: {msg['content']}\n"
+    formatted_prompt += "Assistant:"
     
+    # Prepare request
     payload = {
-        "inputs": prompt,
+        "inputs": formatted_prompt,
         "parameters": {
             "max_new_tokens": 256,
             "temperature": 0.7,
+            "do_sample": True,
             "return_full_text": False
         }
     }
     
-    response = requests.post(API_URL, headers=headers, json=payload)
-    
-    if response.status_code == 200:
-        result = response.json()
-        return result[0]["generated_text"] if isinstance(result, list) else result["generated_text"]
-    else:
-        return f"Error {response.status_code}: {response.text}"
+    try:
+        # Make POST request
+        response = requests.post(API_URL, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            result = response.json()
+            # Handle different response formats
+            if isinstance(result, list):
+                return result[0].get("generated_text", str(result))
+            elif isinstance(result, dict):
+                return result.get("generated_text", str(result))
+            else:
+                return str(result)
+        else:
+            return f"Error {response.status_code}: {response.text[:200]}"
+            
+    except Exception as e:
+        return f"Exception: {str(e)}"
 
 # Chat input
-if prompt := st.chat_input("Ask me anything..."):
+if prompt := st.chat_input("Say something..."):
+    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
     
+    # Get response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = query_hf(st.session_state.messages)
+            response = chat_with_hf(st.session_state.messages)
             st.write(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
