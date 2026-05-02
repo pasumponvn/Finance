@@ -3,7 +3,7 @@ from huggingface_hub import InferenceClient
 
 # 1. Page setup
 st.set_page_config(page_title="HF ChatBot", page_icon="💬")
-st.title("💬 Hugging Face ChatBot")
+st.title("💬 Hugging Face ChatBot - Working Version")
 
 # 2. Get HF Token
 try:
@@ -14,14 +14,12 @@ except Exception:
         st.info("Get your token from huggingface.co/settings/tokens")
         st.stop()
 
-# 3. WORKING MODELS for chat (tested and confirmed)
+# 3. Models that work with Featherless conversational API
 MODEL_OPTIONS = {
     "Gemma-2-2B (Fast)": "google/gemma-2-2b-it",
     "Phi-3-mini (Good)": "microsoft/Phi-3-mini-4k-instruct",
     "Llama-3.2-1B (Very Fast)": "meta-llama/Llama-3.2-1B-Instruct",
     "Mistral-7B (Best Quality)": "mistralai/Mistral-7B-Instruct-v0.3",
-    "Qwen2.5-1.5B (Balanced)": "Qwen/Qwen2.5-1.5B-Instruct",
-    "DeepSeek-Coder-1.3B (Code)": "deepseek-ai/deepseek-coder-1.3b-instruct",
 }
 
 st.sidebar.title("⚙️ Settings")
@@ -32,7 +30,6 @@ selected_model_name = st.sidebar.selectbox(
 )
 selected_model = MODEL_OPTIONS[selected_model_name]
 
-# Advanced settings
 temperature = st.sidebar.slider("Temperature:", 0.1, 1.5, 0.7, 0.1)
 max_tokens = st.sidebar.slider("Max tokens:", 50, 1000, 256, 50)
 
@@ -40,8 +37,6 @@ st.sidebar.info(f"""
 **Active Model:** {selected_model_name}
 **Temperature:** {temperature}
 **Max Tokens:** {max_tokens}
-
-💡 Tip: Lower temperature = more focused responses
 """)
 
 # Initialize client
@@ -56,64 +51,45 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. Generate response function
-def get_chat_response(messages, model, temp, max_tok):
-    """Get response from Hugging Face API"""
+# 5. Function to get response using the CORRECT API
+def get_response(messages, model, temp, max_tok):
+    """Get response using conversational API"""
     try:
-        # Prepare messages in correct format
-        chat_messages = []
+        # Format messages for conversational API
+        # Convert to the format expected by the model
+        conversation = ""
         for msg in messages:
-            chat_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            if msg["role"] == "user":
+                conversation += f"User: {msg['content']}\n"
+            else:
+                conversation += f"Assistant: {msg['content']}\n"
+        conversation += "Assistant:"
         
-        # Call Hugging Face chat completion
-        response = client.chat_completion(
+        # Use text_generation but with the model explicitly
+        response = client.text_generation(
+            prompt=conversation,
             model=model,
-            messages=chat_messages,
             temperature=temp,
-            max_tokens=max_tok,
+            max_new_tokens=max_tok,
             stream=False
         )
         
-        return response["choices"][0]["message"]["content"]
-    
-    except Exception as e:
-        # Try alternative method for some models
-        try:
-            # Build prompt manually
-            prompt = ""
-            for msg in messages:
-                if msg["role"] == "user":
-                    prompt += f"User: {msg['content']}\n"
-                else:
-                    prompt += f"Assistant: {msg['content']}\n"
-            prompt += "Assistant:"
-            
-            # Use text generation as fallback
-            response = client.text_generation(
-                prompt=prompt,
-                model=model,
-                temperature=temp,
-                max_new_tokens=max_tok,
-            )
-            return response
+        return response
         
-        except Exception as e2:
-            return f"❌ Error: {str(e2)[:200]}"
+    except Exception as e:
+        return f"Error: {str(e)[:200]}"
 
-# 6. Chat input and response
+# 6. Chat input
 if prompt := st.chat_input("Type your message here..."):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Generate assistant response
+    # Generate response
     with st.chat_message("assistant"):
         with st.spinner("🤔 Thinking..."):
-            response = get_chat_response(
+            response = get_response(
                 st.session_state.messages,
                 selected_model,
                 temperature,
@@ -124,31 +100,7 @@ if prompt := st.chat_input("Type your message here..."):
     # Add assistant response
     st.session_state.messages.append({"role": "assistant", "content": response})
 
-# 7. Sidebar buttons
-st.sidebar.markdown("---")
-col1, col2 = st.sidebar.columns(2)
-
-with col1:
-    if st.button("🗑️ Clear Chat"):
-        st.session_state.messages = []
-        st.rerun()
-
-with col2:
-    if st.button("📊 Stats"):
-        msg_count = len(st.session_state.messages)
-        st.sidebar.info(f"Messages: {msg_count}\nUsers: {msg_count//2} exchanges")
-
-# 8. Example prompts
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Quick Examples")
-if st.sidebar.button("👋 Say Hello"):
-    st.session_state.messages.append({"role": "user", "content": "Hello! How are you?"})
-    st.rerun()
-
-if st.sidebar.button("💡 Tell me a joke"):
-    st.session_state.messages.append({"role": "user", "content": "Tell me a short joke"})
-    st.rerun()
-
-if st.sidebar.button("📝 Explain AI"):
-    st.session_state.messages.append({"role": "user", "content": "What is artificial intelligence in simple terms?"})
+# 7. Clear button
+if st.sidebar.button("🗑️ Clear Chat"):
+    st.session_state.messages = []
     st.rerun()
