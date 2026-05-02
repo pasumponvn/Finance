@@ -1,10 +1,10 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 
-# 1. Page Configuration & Modern Aesthetics
+# 1. Page Configuration
 st.set_page_config(page_title="Aura AI", page_icon="🌐")
 
-# Custom CSS for a "Fancy" Tech look
+# 2. Custom CSS - Fixed the unsafe_allow_html parameter
 st.markdown("""
     <style>
     .main {
@@ -19,32 +19,23 @@ st.markdown("""
         font-weight: 800;
         font-size: 3rem !important;
     }
-    div.stButton > button:first-child {
-        background-color: #4facfe;
-        color: white;
-        border-radius: 20px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🌐 Aura AI")
 st.caption("Next-Gen Intelligent Assistant | Powered by Gemma-2")
 
-# 2. Secure Token Access
+# 3. Secure Token Access
 try:
-    # This pulls from your Streamlit Cloud "Advanced Settings > Secrets"
     HF_TOKEN = st.secrets["HF_TOKEN"]
 except Exception:
     st.error("Credential Error: Please add your HF_TOKEN to Streamlit Secrets.")
     st.stop()
 
-# 3. Initialize Model
-# google/gemma-2-2b-it is the engine for Aura AI
-#client = InferenceClient(model="google/gemma-2-2b-it", token=HF_TOKEN)
-# Change this line in app.py
+# 4. Initialize Model - Switched to 9b for better serverless support
 client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
 
-# 4. Session State for Chat Persistence
+# 5. Session State for Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -53,7 +44,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5. Interaction Logic
+# 6. Interaction Logic - Using chat_completion for 'conversational' task
 if prompt := st.chat_input("Illuminate your thoughts..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -61,11 +52,10 @@ if prompt := st.chat_input("Illuminate your thoughts..."):
 
     with st.chat_message("assistant"):
         try:
-            # We use chat_completion instead of text_generation
-            # This is compatible with the 'conversational' task requirement
-            response = ""
-            resp_container = st.empty()
+            response_placeholder = st.empty()
+            full_response = ""
             
+            # Streaming the response for a fancy real-time feel
             for chunk in client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are Aura AI, a sophisticated and visionary assistant."},
@@ -77,11 +67,11 @@ if prompt := st.chat_input("Illuminate your thoughts..."):
             ):
                 token = chunk.choices[0].delta.content
                 if token:
-                    response += token
-                    resp_container.markdown(response + "▌")
+                    full_response += token
+                    response_placeholder.markdown(full_response + "▌")
             
-            resp_container.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            response_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
             
         except Exception as e:
             st.error(f"Aura Connection Interrupted: {e}")
