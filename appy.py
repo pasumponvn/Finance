@@ -25,7 +25,7 @@ st.markdown("""
         border-radius: 20px;
     }
     </style>
-    """, unsafe_allow_code=True)
+    """, unsafe_allow_html=True)
 
 st.title("🌐 Aura AI")
 st.caption("Next-Gen Intelligent Assistant | Powered by Gemma-2")
