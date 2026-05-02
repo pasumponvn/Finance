@@ -40,7 +40,9 @@ except Exception:
 
 # 3. Initialize Model
 # google/gemma-2-2b-it is the engine for Aura AI
-client = InferenceClient(model="google/gemma-2-2b-it", token=HF_TOKEN)
+#client = InferenceClient(model="google/gemma-2-2b-it", token=HF_TOKEN)
+# Change this line in app.py
+client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
 
 # 4. Session State for Chat Persistence
 if "messages" not in st.session_state:
