@@ -3,7 +3,7 @@ matplotlib
 numpy
 pandas
 plotly
-streamlit==1.39.0
+streamlit
 altair<5
 vega_datasets
 huggingface_hub
