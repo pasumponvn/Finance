@@ -4,7 +4,7 @@ from huggingface_hub import InferenceClient
 # 1. Page Configuration
 st.set_page_config(page_title="Aura AI", page_icon="🌐")
 
-# 2. Custom CSS - Fixed the unsafe_allow_html parameter
+# 2. Custom CSS - Fixed the parameter name to avoid TypeError
 st.markdown("""
     <style>
     .main {
@@ -32,7 +32,7 @@ except Exception:
     st.error("Credential Error: Please add your HF_TOKEN to Streamlit Secrets.")
     st.stop()
 
-# 4. Initialize Model - Switched to 9b for better serverless support
+# 4. Initialize Model - Using a stable model ID
 client = InferenceClient(model="google/gemma-2-9b-it", token=HF_TOKEN)
 
 # 5. Session State for Chat History
@@ -44,7 +44,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 6. Interaction Logic - Using chat_completion for 'conversational' task
+# 6. Interaction Logic
 if prompt := st.chat_input("Illuminate your thoughts..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -55,10 +55,10 @@ if prompt := st.chat_input("Illuminate your thoughts..."):
             response_placeholder = st.empty()
             full_response = ""
             
-            # Streaming the response for a fancy real-time feel
+            # Using chat_completion (Requires huggingface_hub >= 0.23.0)
             for chunk in client.chat_completion(
                 messages=[
-                    {"role": "system", "content": "You are Aura AI, a sophisticated and visionary assistant."},
+                    {"role": "system", "content": "You are Aura AI, a visionary assistant."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1024,
